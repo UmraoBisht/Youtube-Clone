@@ -1,4 +1,5 @@
 import mongoose, { Schema } from "mongoose";
+import validator from "validator";
 import bcryptjs from "bcryptjs";
 import jwt from "jsonwebtoken";
 
@@ -31,10 +32,12 @@ const userSchema = new Schema(
       unique: true,
       trim: true,
       lowercase: true,
-      validate(value) {
-        if (!validator.isEmail(value)) {
-          throw new Error("Email is invalid");
-        }
+      validate: {
+        validator(value) {
+          if (!validator.isEmail(value)) {
+            throw new Error("Email is invalid");
+          }
+        },
       },
     },
     avatar: {
@@ -43,7 +46,6 @@ const userSchema = new Schema(
     },
     coverImage: {
       type: String,
-      required: true,
     },
     watchHistory: [
       {
@@ -59,10 +61,12 @@ const userSchema = new Schema(
       required: true,
       trim: true,
       minlength: 7,
-      validate(value) {
-        if (value.toLowerCase().includes("password")) {
-          throw new Error("Password cannot contain 'password'");
-        }
+      validate: {
+        validator(value) {
+          if (value.toLowerCase().includes("password")) {
+            throw new Error("Password cannot contain 'password'");
+          }
+        },
       },
     },
   },
