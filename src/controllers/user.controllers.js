@@ -4,6 +4,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
+import {transporter} from "../utils/sendMail.js";
 
 const generateAccessAndRefreshTokens = async (userId) => {
   try {
@@ -52,8 +53,13 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new ApiError(400, "User with email or userName already exists");
   }
 
+  if (!req.files?.avatar[0]) {
+    throw new ApiError(400, "No avatar image provided");
+  }
+
   const avatarLocalPath = req.files?.avatar[0]?.path;
   // const coverImageLocalPath = req.files?.coverImage[0]?.path;
+  console.log(avatarLocalPath);
 
   let coverImageLocalPath;
   if (req.files?.coverImage?.length > 0) {
@@ -220,4 +226,168 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
   }
 });
 
-export { registerUser, loginUser, logoutUser, refreshAccessToken };
+const changeCurrentPassword = asyncHandler(async (req, res) => {
+  // get user details from frontend
+  // validation - not empty
+  // check if password is correct
+  // update password
+  // return res
+
+  const { currentPassword, newPassword } = req.body;
+  if (!(currentPassword || newPassword)) {
+    throw new ApiError(400, "All fields are required");
+  }
+
+  const user = await User.findById(req.user?._id);
+  if (!user) {
+    throw new ApiError(404, "User not found!");
+  }
+  const isPasswordValid = await user.isPasswordCorrect(currentPassword);
+  if (!isPasswordValid) {
+    throw new ApiError(401, "Invalid current password");
+  }
+  user.password = newPassword;
+  await user.save({ validateBeforeSave: false });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, null, "Password changed successfully"));
+});
+
+const getCurrentUser = asyncHandler(async (req, res) => {
+  // get user details from frontend
+  // return res
+  const user = await User.findById(req.user?._idid).select(
+    "-password -refreshToken"
+  );
+  if (!user) {
+    throw new ApiError(404, "User not found!");
+  }
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "User fetched successfully"));
+});
+
+const updateAccountDetails = asyncHandler(async (req, res) => {
+  // get user details from frontend
+  // validation - not empty
+  // update user details
+  // return res
+
+  const { userName, firstName, lastName, email } = req.body;
+  if (!(userName || firstName || lastName || email)) {
+    throw new ApiError(400, "All fields are required");
+  }
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    {
+      userName: userName.toLowerCase(),
+      firstName: firstName.toLowerCase(),
+      lastName: lastName.toLowerCase(),
+      email: email.toLowerCase(),
+    },
+    {
+      new: true,
+    }
+  ).select("-password -refreshToken");
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "Account details updated successfully"));
+});
+
+const updateAvatar = asyncHandler(async (req, res) => {
+  // get user details from frontend
+  // validation - not empty
+  // upload avatar to cloudinary
+  // update user avatar
+  // return res
+  const avatarLocalPath = req.file?.path;
+  if (!avatarLocalPath) {
+    throw new ApiError(400, "Avatar file is missing");
+  }
+
+  const avatar = await uploadOnCloudinary(avatarLocalPath);
+  if (!avatar.secure_url) {
+    throw new ApiError(400, "Avatar upload failed");
+  }
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    { avatar: avatar.secure_url },
+    { new: true }
+  ).select("-password -refreshToken");
+
+  console.log(user);
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "Avatar updated successfully"));
+});
+
+const updateCoverImage = asyncHandler(async (req, res) => {
+  const coverImageLocalPath = req.file.path;
+  if (!coverImageLocalPath) {
+    throw new ApiError(400, "Cover Image file is missing");
+  }
+  const coverImage = await uploadOnCloudinary(coverImageLocalPath);
+  if (!coverImage.secure_url) {
+    throw new ApiError(400, "Cover Image upload failed");
+  }
+
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    {
+      coverImage: coverImage.secure_url,
+    },
+    {
+      new: true,
+    }
+  ).select("-password -refreshToken");
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "Cover Image updated successfully"));
+});
+
+const resetPassword = asyncHandler(async (req, res) => {
+  // get user details from frontend
+  // validation - not empty
+  // send password reset link to user email
+  // return res
+
+  const { email } = req.body;
+  if (!email) {
+    throw new ApiError(400, "Email is required");
+  }
+
+  const user = await User.findOne({email});
+  if (!user) {
+    throw new ApiError(404, "User not found!");
+  }
+
+  const mailOptions = {
+    from: 'rod.johns@ethereal.email', // sender address
+    to: user.email, // list of receivers
+    subject: "Hello ✔", // Subject line
+    text: "Hello world?", // plain text body
+    html: "<b>Hello world?</b>", // html body
+  };
+
+  const info = await transporter.sendMail(mailOptions);
+  console.log(info.messageId);
+  return res
+    .status(200)
+    .json(new ApiResponse(200, null, "Password reset link sent successfully"));
+});
+
+export {
+  registerUser,
+  loginUser,
+  logoutUser,
+  refreshAccessToken,
+  changeCurrentPassword,
+  getCurrentUser,
+  updateAccountDetails,
+  updateAvatar,
+  updateCoverImage,
+  resetPassword,
+};
