@@ -4,7 +4,8 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
-import {transporter} from "../utils/sendMail.js";
+import { transporter } from "../utils/sendMail.js";
+import mongoose from "mongoose";
 
 const generateAccessAndRefreshTokens = async (userId) => {
   try {
@@ -257,7 +258,7 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
 const getCurrentUser = asyncHandler(async (req, res) => {
   // get user details from frontend
   // return res
-  const user = await User.findById(req.user?._idid).select(
+  const user = await User.findById(req.user?._id).select(
     "-password -refreshToken"
   );
   if (!user) {
@@ -302,6 +303,7 @@ const updateAvatar = asyncHandler(async (req, res) => {
   // upload avatar to cloudinary
   // update user avatar
   // return res
+  console.log(req.file);
   const avatarLocalPath = req.file?.path;
   if (!avatarLocalPath) {
     throw new ApiError(400, "Avatar file is missing");
@@ -359,13 +361,13 @@ const resetPassword = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Email is required");
   }
 
-  const user = await User.findOne({email});
+  const user = await User.findOne({ email });
   if (!user) {
     throw new ApiError(404, "User not found!");
   }
 
   const mailOptions = {
-    from: 'rod.johns@ethereal.email', // sender address
+    from: "rod.johns@ethereal.email", // sender address
     to: user.email, // list of receivers
     subject: "Hello ✔", // Subject line
     text: "Hello world?", // plain text body
@@ -379,6 +381,137 @@ const resetPassword = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, null, "Password reset link sent successfully"));
 });
 
+const getUserChannelProfile = asyncHandler(async (req, res) => {
+  const { username } = req.params;
+  if (!username?.trim()) {
+    throw new ApiError(400, "username is missing!");
+  }
+  const channel = await User.aggregate([
+    {
+      $match: {
+        //returns an array
+        userName: username?.toLowerCase(),
+      },
+    },
+    {
+      $lookup: {
+        //return an array
+        from: "Subscriptions", //using collections created by database
+        localField: "_id",
+        foreginFeild: "subscriber", //from Subscriber model
+        as: "subscribers", //name as per wish (actually represets its true value )
+      },
+    },
+    {
+      $lookup: {
+        from: "Subscriptions",
+        localField: "_id",
+        foreginFeild: "subscriber", //from Subscriber model
+        as: "subscribedTo", //name as per wish (actually represents its true value )
+      },
+    },
+    {
+      $addFields: {
+        subscribersCount: {
+          $size: "$subscribers",
+        },
+        subscribedToCount: {
+          $size: "$subscribedTo",
+        },
+        isSubscribed: {
+          // $in: [req.user?._id, "$subscribers"],
+          $cond: {
+            if: { $in: [req.user?._id, "$subscribers.subscriber"] }, //TODO: need to check how it works
+            then: true,
+            else: false,
+          },
+        },
+      },
+    },
+    {
+      $project: {
+        _id: 1,
+        userName: 1,
+        firstName: 1,
+        lastName: 1,
+        email: 1,
+        avatar: 1,
+        coverImage: 1,
+        subscribersCount: 1,
+        subscribedToCount: 1,
+        isSubscribed: 1,
+        subscriptions: 0,
+        subscribedTo: 0,
+      },
+    },
+  ]);
+  console.log(channel);
+  if (!channel?.length) {
+    throw new ApiError(400, "Channel Does not exists");
+  }
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(200, channel[0], "user channel fetched successfully!")
+    );
+});
+
+const getWatchHistory = asyncHandler(async (req, res) => {
+  const user = await User.aggregate(
+    {
+      $match: {
+        _id: new mongoose.Types.ObjectId.createFromBase64(req.user._id),
+      },
+    },
+    {
+      $lookup: {
+        from: "Videos",
+        localField: "watchHistory",
+        foreginFeild: "_id",
+        as: "watchHistory",
+        pipeline: [
+          {
+            $lookup: {
+              from: "Users",
+              localField: "owner",
+              foreginFeild: "_id",
+              as: "owner",
+              pipeline: [
+                {
+                  $project: {
+                    _id: 1,
+                    userName: 1,
+                    firstName: 1,
+                    lastName: 1,
+                    avatar: 1,
+                  },
+                },
+              ],
+            },
+          },
+          {
+            $addFields: {
+              owner: {
+                $first: "$owner",
+              },
+            },
+          },
+        ],
+      },
+    }
+  );
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        user.watchHistory,
+        "Watch History Successfully Fetched!"
+      )
+    );
+});
+
 export {
   registerUser,
   loginUser,
@@ -390,4 +523,6 @@ export {
   updateAvatar,
   updateCoverImage,
   resetPassword,
+  getUserChannelProfile,
+  getWatchHistory,
 };
