@@ -303,7 +303,6 @@ const updateAvatar = asyncHandler(async (req, res) => {
   // upload avatar to cloudinary
   // update user avatar
   // return res
-  console.log(req.file);
   const avatarLocalPath = req.file?.path;
   if (!avatarLocalPath) {
     throw new ApiError(400, "Avatar file is missing");
@@ -492,7 +491,7 @@ const getWatchHistory = asyncHandler(async (req, res) => {
           },
           {
             $addFields: {
-              owner: {
+              owner: { //new fields can be add here we are overrriding owner field
                 $first: "$owner",
               },
             },
@@ -506,9 +505,32 @@ const getWatchHistory = asyncHandler(async (req, res) => {
     .json(
       new ApiResponse(
         200,
-        user.watchHistory,
+        user[0].watchHistory,
         "Watch History Successfully Fetched!"
       )
+    );
+});
+
+const addToWatchHistory = asyncHandler(async (req, res) => {
+  const { videoId } = req.body;
+  if (!videoId) {
+    throw new ApiError(400, "Video Id is required");
+  }
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    {
+      $push: {
+        watchHistory: videoId,
+      },
+    },
+    {
+      new: true,
+    }
+  ).select("-password");
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(200, user, "Video Added To Watch History Successfully")
     );
 });
 
@@ -525,4 +547,5 @@ export {
   resetPassword,
   getUserChannelProfile,
   getWatchHistory,
+  addToWatchHistory,
 };

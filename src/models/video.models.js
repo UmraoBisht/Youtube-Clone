@@ -36,12 +36,12 @@ const videoSchema = new Schema(
       default: 0,
     },
     comments: {
-      type: Number,
-      required: true,
+      type: [String],
+      default: [],
     },
     duration: {
       type: String,
-      required: true,
+      default: "",
     },
     isPublished: {
       type: Boolean,
